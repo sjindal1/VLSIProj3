@@ -1,0 +1,11 @@
+Fault equivalence node ID 0: [a/0]; 
+Fault equivalence node ID 2: [b/0]; 
+Fault equivalence node ID 3: [b/1]; 
+Fault equivalence node ID 4: [c/0]; 
+Fault equivalence node ID 5: [a/1 == b_0/1 == c/1]; 
+Fault equivalence node ID 7: [b_1/0 == d/1]; 
+Fault equivalence node ID 8: [b_1/1 == c_0/0 == c_1/0 == d/0 == e/0]; 
+Fault equivalence node ID 9: [e/1]; 
+Fault equivalence node ID 10: [b_0/0]; 
+Fault equivalence node ID 15: [c_0/1]; 
+Fault equivalence node ID 17: [c_1/1]; 

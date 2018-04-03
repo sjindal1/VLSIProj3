@@ -1,0 +1,16 @@
+input(a)
+input(b)
+input(c)
+input(d)
+output(m)
+
+# e = b_0
+# f = b_1
+# i = h_0
+# j = h_1
+
+g = and(a,b)
+h = or(b,c)
+k = nand(g,h)
+l = nor(h,d)
+m = and(k,l)

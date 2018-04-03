@@ -1,0 +1,16 @@
+Fault equivalence node ID 1: [a/1]; 
+Fault equivalence node ID 2: [b/0]; 
+Fault equivalence node ID 3: [b/1]; 
+Fault equivalence node ID 4: [c/0]; 
+Fault equivalence node ID 6: [d/0]; 
+Fault equivalence node ID 9: [b_0/1]; 
+Fault equivalence node ID 10: [b_1/0]; 
+Fault equivalence node ID 13: [g/1]; 
+Fault equivalence node ID 14: [h/0]; 
+Fault equivalence node ID 15: [b_1/1 == c/1 == h/1]; 
+Fault equivalence node ID 17: [h_0/1]; 
+Fault equivalence node ID 18: [h_1/0]; 
+Fault equivalence node ID 21: [a/0 == b_0/0 == g/0 == h_0/0 == k/1]; 
+Fault equivalence node ID 23: [l/1]; 
+Fault equivalence node ID 24: [d/1 == h_1/1 == k/0 == l/0 == m/0]; 
+Fault equivalence node ID 25: [m/1]; 
