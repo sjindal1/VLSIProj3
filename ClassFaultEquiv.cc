@@ -29,6 +29,53 @@ FaultEquiv::FaultEquiv(vector<faultStruct> f) {
 	init(f);
 }
 
+/** \brief Copy constructor */
+FaultEquiv::FaultEquiv(const FaultEquiv& oldFE) {
+
+  // This the old vector of faultEquivNode pointers. This copy constructor needs to make a copy of all the
+  // faultEquivs referenced here, and then re-build the dominance pointers between them.
+  vector<faultEquivNode*> oldFaultEquivNodes = oldFE.getAllFaultEquivNodes();
+
+  // Go through oldFaultEquivNodes and make a copy of each faultEquivNode in oldFaultEquivNodes, except clear their dominates and dominatedBy vectors. 
+  // Add pointers to these faultEquivNodes to my allFaultEquivNodes.
+  for (vector<faultEquivNode*>::iterator i = oldFaultEquivNodes.begin(); i < oldFaultEquivNodes.end(); ++i) {   
+    vector<faultEquivNode*> d1, d2;
+    faultEquivNode* n = new faultEquivNode({(*i)->equivFaults, d1, d2, (*i)->idNumber});
+    allFaultEquivNodes.push_back(n);
+  }
+  
+  // Now, the new copy of the FaultEquiv has its own unique copies of the faultEquivNodes (with the fault equivalence preserved), but
+  // it has no dominance. Next, we need to re-create the dominatedBy and dominates vectors to match the old FaultEquiv.
+
+  // Loop over the old FaultEquiv's list of faultEquivNodes. 
+  for (int i=0; i<oldFaultEquivNodes.size(); i++) {
+
+    // Get the list of all nodes that oldFaultEquivNodes[i] dominates.
+    vector<faultEquivNode*> thisNodeDominates = oldFaultEquivNodes[i]->dominates;
+
+    // For each of the nodes that oldFaultEquivNodes[i] dominates, I want to set up the corresponding dominance in the *new* 
+    // allFaultEquivNodes, except we need the pointers to refer to the *new* faultEquivNodes we just created.
+    for (int j=0; j<thisNodeDominates.size(); j++) {      
+
+      // Find where in oldFaultEquivNodes thisNodeDominates[j] is located
+      vector<faultEquivNode*>::iterator dominatedNode = find(oldFaultEquivNodes.begin(), oldFaultEquivNodes.end(), thisNodeDominates[j]);
+
+      // Check that we found the location. If we did not find it, this is an error (assert false below)
+      if (dominatedNode != oldFaultEquivNodes.end()) {
+	int dominatedLoc = distance(oldFaultEquivNodes.begin(), dominatedNode);
+	
+	// Now, we need to set up dominance: allFaultEquivNodes[i] dominates allFaultEquivNodes[dominatedLoc]:
+
+	allFaultEquivNodes[i]->dominates.push_back(allFaultEquivNodes[dominatedLoc]);
+	allFaultEquivNodes[dominatedLoc]->dominatedBy.push_back(allFaultEquivNodes[i]);
+      }
+      else
+	assert(false);
+    }
+  }
+
+}
+
 /** \brief Initialize a FaultEquiv
  *  \param f a vector of faultStructs that indicates all faults that must be considered
  */
@@ -247,9 +294,14 @@ vector<faultStruct> FaultEquiv::getCollapsedFaultList() {
 	}
 	return allCollapsedFaults;
 }
-
+ 
+vector<faultEquivNode*> FaultEquiv::getAllFaultEquivNodes() const {
+  return allFaultEquivNodes;
+}
+ 
 /** \brief Deconstructor */
 FaultEquiv::~FaultEquiv() {
 	for (vector<faultEquivNode*>::iterator i = allFaultEquivNodes.begin(); i < allFaultEquivNodes.end(); ++i)
 		delete *i;
 }
+

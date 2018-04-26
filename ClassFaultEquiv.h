@@ -65,10 +65,12 @@ private:
 public:
 	FaultEquiv();
 	FaultEquiv(vector<faultStruct> f);
+	FaultEquiv(const FaultEquiv& oldFE);
 	void init(vector<faultStruct> f);
 	void printEquivNode(ostream& os, faultEquivNode n);
 	void printFaultEquiv(ostream& os);
 	faultEquivNode* findFaultEquivNode(faultStruct fs);
+	vector<faultEquivNode*> getAllFaultEquivNodes() const;
 
 	//FIXME: change these to Gate*, char faultType, Gate*, char faultType2
 	bool mergeFaultEquivNodes(Gate* g1, char v1, Gate* g2, char v2);

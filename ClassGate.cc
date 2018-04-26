@@ -47,6 +47,9 @@ Gate::Gate(string name, int ID, int gt) {
 	gateType = gt; 
 	gateValue = LOGIC_UNSET;
 	depth = -1;
+        cc0 = -1;
+        cc1 = -1;
+        co = -1;
 }
 	
 /** \brief Get the gate type for this gate.
@@ -283,4 +286,34 @@ void Gate::set_faultType(char f) {
 char Gate::get_faultType() {
 	return faultType;
 }
+
+
+void Gate::set_CC0(int val){
+  cc0 = val;
+}
+
+int Gate::get_CC0(){
+  return cc0;
+}
+
+void Gate::set_CC1(int val){
+  cc1 = val;
+}
+
+int Gate::get_CC1(){
+  return cc1;
+}
+
+void Gate::set_CO(int val){
+  co = val;
+}
+
+int Gate::get_CO(){
+  return co;
+}
+
+
+
+
+
 

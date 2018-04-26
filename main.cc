@@ -54,6 +54,8 @@
 #include <limits>
 #include <stdlib.h>
 #include <time.h>
+#include <ctime>
+#include <unordered_set>
 
 using namespace std;
 
@@ -87,6 +89,10 @@ bool getObjective(Gate* &g, char &v, Circuit* myCircuit);
 void updateDFrontier(Circuit* myCircuit);
 void backtrace(Gate* &pi, char &piVal, Gate* objGate, char objVal, Circuit* myCircuit);
 bool d_dbar_on_PO(Circuit*);
+void printPODEMResult(bool, Circuit*, vector<faultStruct>&, vector<vector<char>>&, ofstream&, char);
+void addDominatedNodesToSet(vector<faultEquivNode*>,unordered_set<faultEquivNode*>&);
+void runPODEMForNode(faultEquivNode*, Circuit*, vector<faultStruct>&, vector<vector<char>>&, ofstream&, unordered_set<faultEquivNode*>&, vector<faultEquivNode*>&);
+void validateMode5Results(Circuit*, vector<faultStruct>&, vector<vector<char>>&, vector<faultStruct>);
 //--------------------------
 
 //----------------------------
@@ -105,6 +111,17 @@ void setPIFanouts(Circuit*);
 void setAllEquivalentNodes(vector<Gate*>&, FaultEquiv&);
 bool isValidEquivGate(Gate*);
 void setEquivForGate(Gate*, FaultEquiv&);
+void removeGateFromDFrontier(Gate*);
+void setSCOAPValues(Circuit*);
+void printSCOAPValues(vector<Gate*>);
+void setControlability(vector<Gate*>);
+void setObservability(vector<Gate*> outputs);
+void set_CC0_CC1(Gate*, vector<Gate*>);
+void set_CO(Gate*, vector<Gate*>);
+Gate* getGateWithMinObserv(vector<Gate*>);
+bool getInputWithMaxCC1(Gate* &, vector<Gate*>);
+bool getInputWithMaxCC0(Gate* &, vector<Gate*>);
+int randNum(int min, int max);
 //-----------------------------
 
 
@@ -327,18 +344,10 @@ int main(int argc, char* argv[]) {
 		// You can put mode == 4 code here if you want
 		// (or maybe you will just include these optimizations inside of your
 		// main PODEM code, and you can remove this)
-
-
-	}
-	if (mode == 5) {
-		// TODO
-		// Here you should start your code for mode 5, test set size reduction
-
+                //setSCOAPValues(myCircuit);
+                //printSCOAPValues(myCircuit->getPOGates());
 
 	}
-	// -----------End of Part 4 ---------------------------------
-
-
 	// ------------- PODEM code ----------------------------------
 	// This will run in all parts by default. 
 
@@ -350,93 +359,118 @@ int main(int argc, char* argv[]) {
 	// finds. You may want to use this in checking correctness of
 	// your program.
 	vector<vector<char>> allTests;
+        if (mode == 5) {
+		// TODO
+		// Here you should start your code for mode 5, test set size reduction
+		vector<faultEquivNode*> faultEquivNodes = myFaultEquivGraph.getAllFaultEquivNodes();
+		int faultNodes = faultEquivNodes.size(); 
+		unordered_set<faultEquivNode*> nodesTraversed;
+		for (int faultNum = 0; faultNum < faultNodes; faultNum++) {
 
+			faultEquivNode* equivNode = faultEquivNodes[faultNum];
+			if(nodesTraversed.find(equivNode) != nodesTraversed.end()) continue;
+			
+                        runPODEMForNode(equivNode, myCircuit, undetectableFaults, allTests, outputStream, nodesTraversed, faultEquivNodes);	
+		}
+		cout << "Test set has been reduced to " << allTests.size() + undetectableFaults.size() << " tests" << endl;
+		//validateMode5Results(myCircuit, origFaultList, allTests, undetectableFaults);
 
-	// This is the main loop that performs PODEM.
-	// It iterates over all faults in the faultList. For each one,
-	// it will set up the fault and call your podemRecursion() function.
-	// You should not have to change this, but you should understand how 
-	// it works.
-	for (int faultNum = 0; faultNum < faultList.size(); faultNum++) {
+	}else{
 
-		// Clear the old fault in your circuit, if any.
-		myCircuit->clearFaults();
+		// This is the main loop that performs PODEM.
+		// It iterates over all faults in the faultList. For each one,
+		// it will set up the fault and call your podemRecursion() function.
+		// You should not have to change this, but you should understand how 
+		// it works.
+		for (int faultNum = 0; faultNum < faultList.size(); faultNum++) {
+
+			// Clear the old fault in your circuit, if any.
+			myCircuit->clearFaults();
 		 
-		// Set up the fault we are trying to detect
-		faultLocation  = faultList[faultNum].loc;
-		char faultType = faultList[faultNum].val;
-		faultLocation->set_faultType(faultType);      
-		faultActivationVal = (faultType == FAULT_SA0) ? LOGIC_ONE : LOGIC_ZERO;
+			// Set up the fault we are trying to detect
+			faultLocation  = faultList[faultNum].loc;
+			char faultType = faultList[faultNum].val;
+			faultLocation->set_faultType(faultType);      
+			faultActivationVal = (faultType == FAULT_SA0) ? LOGIC_ONE : LOGIC_ZERO;
 		 
-		// Set all gate values to X
-		for (int i=0; i < myCircuit->getNumberGates(); i++) {
-			myCircuit->getGate(i)->setValue(LOGIC_X);
-		}
-
-		// initialize the D frontier.
-		dFrontier.clear();
-		
-		// call PODEM recursion function
-		bool res = podemRecursion(myCircuit);
-
-		// If we succeed, print the test we found to the output file, and 
-		// store the test in the allTests vector.
-		if (res == true) {
-			vector<Gate*> piGates = myCircuit->getPIGates();
-			vector<char> thisTest;
-			for (int i=0; i < piGates.size(); i++) {
-				// Print PI value to output file
-				outputStream << printPIValue(piGates[i]->getValue());
-
-				// Store PI value for later
-				char v = piGates[i]->getValue();
-				if (v == LOGIC_D)
-					v = LOGIC_ONE;
-				else if (v == LOGIC_DBAR)
-					v = LOGIC_ZERO;
-				thisTest.push_back(v);			
-
+			// Set all gate values to X
+			for (int i=0; i < myCircuit->getNumberGates(); i++) {
+				myCircuit->getGate(i)->setValue(LOGIC_X);
 			}
-			outputStream << endl;
-			allTests.push_back(thisTest);
-		}
 
-		// If we failed to find a test, print a message to the output file
-		else 
-			outputStream << "none found" << endl;
+			// initialize the D frontier.
+			dFrontier.clear();
 		
-		// Lastly, you can use this to test that your PODEM-generated test
-		// correctly detects the already-set fault.
-		// Of course, this assumes that your simulation code is correct.
-		// Comment this out when you are evaluating the runtime of your
-		// ATPG system because it will add extra time.
-		if (res == true) {
-			if (!checkTest(myCircuit)) {
-				cout << "ERROR: PODEM returned true, but generated test does not detect this fault on PO." << endl;
-				//myCircuit->printAllGates(); // uncomment if you want to see what is going on here
-				assert(false);
-			}
-		}
-		
-		// Just printing to screen to let you monitor progress. You can comment this
-		// out if you like.
-		cout << "Fault = " << faultLocation->get_outputName() << " / " << (int)(faultType) << ";";
-		if (res == true) 
-			cout << " test found; " << endl;
-		else {
-			cout << " no test found; " << endl;
-			faultStruct f = {faultLocation, faultType};
-			undetectableFaults.push_back(f);
-		}
-	}
+			// call PODEM recursion function
+			bool res = podemRecursion(myCircuit);
 
-	// clean up and close the output stream
+			printPODEMResult(res, myCircuit, undetectableFaults, allTests, outputStream, faultType);
+		}
+        }
+
+	// -----------End of Part 4 ---------------------------------
+	cout << "Total undetectable faults " << undetectableFaults.size() << endl;	
+        // clean up and close the output stream
 	delete myCircuit;
 	outputStream.close();
 
 	return 0;
 }
 
+
+
+void printPODEMResult(bool res, Circuit* myCircuit, vector<faultStruct>& undetectableFaults, vector<vector<char>>& allTests,
+                     ofstream& outputStream, char faultType){
+	// If we succeed, print the test we found to the output file, and 
+	// store the test in the allTests vector.
+	if (res == true) {
+		vector<Gate*> piGates = myCircuit->getPIGates();
+		vector<char> thisTest;
+		for (int i=0; i < piGates.size(); i++) {
+			// Print PI value to output file
+			outputStream << printPIValue(piGates[i]->getValue());
+
+			// Store PI value for later
+			char v = piGates[i]->getValue();
+			if (v == LOGIC_D)
+				v = LOGIC_ONE;
+			else if (v == LOGIC_DBAR)
+				v = LOGIC_ZERO;
+			thisTest.push_back(v);			
+
+		}
+		outputStream << endl;
+		allTests.push_back(thisTest);
+	}
+
+	// If we failed to find a test, print a message to the output file
+	else 
+		outputStream << "none found" << endl;
+	
+	// Lastly, you can use this to test that your PODEM-generated test
+	// correctly detects the already-set fault.
+	// Of course, this assumes that your simulation code is correct.
+	// Comment this out when you are evaluating the runtime of your
+	// ATPG system because it will add extra time.
+	if (res == true) {
+		if (!checkTest(myCircuit)) {
+			cout << "ERROR: PODEM returned true, but generated test does not detect this fault on PO." << endl;
+			//myCircuit->printAllGates(); // uncomment if you want to see what is going on here
+			assert(false);
+		}
+	}
+	
+	// Just printing to screen to let you monitor progress. You can comment this
+	// out if you like.
+	cout << "Fault = " << faultLocation->get_outputName() << " / " << (int)(faultType) << ";";
+	if (res == true) 
+		cout << " test found; " << endl;
+	else {
+		cout << " no test found; " << endl;
+		faultStruct f = {faultLocation, faultType};
+		undetectableFaults.push_back(f);
+	}
+}
 
 /////////////////////////////////////////////////////////////////////
 // Functions in this section are helper functions.
@@ -597,8 +631,17 @@ void eventDrivenSim(Circuit* myCircuit, queue<Gate*> q) {
           }
           setGateOutputs(outputs);
           int i = 0;
-          for(Gate* gate:outputs){
-            if(outputValues[i++] != gate->getValue()) q.push(gate);
+          for(Gate* outGate:outputs){
+            if(outputValues[i] != outGate->getValue()) q.push(outGate);
+            if(mode >= 4){
+              char inputValue = input->getValue(), outputValue = outGate->getValue();
+              if((inputValue == LOGIC_D || inputValue == LOGIC_DBAR) && outputValue == LOGIC_X)
+                dFrontier.push_back(outGate);
+              if((outputValue == LOGIC_D || outputValue == LOGIC_DBAR)){
+                removeGateFromDFrontier(outGate);
+              }
+            }
+            i++;
           }
         }
 }
@@ -612,7 +655,7 @@ void eventDrivenSim(Circuit* myCircuit, queue<Gate*> q) {
 
 /** @brief PODEM recursion.
  *
- * \note For Part 1, you must write this, following the pseudocode from class. 
+ * \note For Part 1, you must write this, following the pseudocode from . 
  * Make use of the getObjective and backtrace functions.
  * For Part 2, you will add code to this that calls your eventDrivenSim() function.
  * For Parts 3 and 4, use the eventDrivenSim() version.
@@ -732,25 +775,57 @@ bool getObjective(Gate* &g, char &v, Circuit* myCircuit) {
         } 
         //Once fault is excited we need to set 
         //the remaining gate inputs to the controlling value
-        updateDFrontier(myCircuit);
+        if(mode < 4)
+          updateDFrontier(myCircuit);
         if(dFrontier.size() == 0) return false;
-        Gate* dGate = dFrontier[0];
-        vector<Gate*> gInputs = dGate->get_gateInputs();
-        for(Gate* gInput:gInputs){
-          if(gInput->getValue() == LOGIC_UNSET || gInput->getValue() == LOGIC_X){
-            g = gInput;
-            char gateType = dGate->get_gateType();
-            // We treat XOR as OR and XNOR as NOR
-            if(gateType == GATE_XOR){
-              gateType = GATE_OR;
-            }else if(gateType == GATE_XNOR) {
-              gateType = GATE_NOR;
-            }
-            v = nonControllingValue(gateType); 
-            return true;
-          }
-        }             
+        Gate* dGate;
 
+	//trying SCOAP Matrix 
+	//Did not produce intended results so 
+	//set mode to 9 which will never be the case
+        if(mode == 9){         
+          dGate = getGateWithMinObserv(dFrontier);
+          char gateType = dGate->get_gateType();
+          // We treat XOR as OR and XNOR as NOR
+          if(gateType == GATE_XOR){
+            gateType = GATE_OR;
+          }else if(gateType == GATE_XNOR) {
+            gateType = GATE_NOR;
+          }                                 
+          v = nonControllingValue(gateType);
+          bool gateSet = false;
+          if(v == LOGIC_ONE){
+            //cout << "Inside Logic 1" << endl;
+            gateSet = getInputWithMaxCC1(g, dGate->get_gateInputs());
+          }else{
+            //cout << "Inside Logic 0" << endl;
+            gateSet = getInputWithMaxCC0(g, dGate->get_gateInputs());
+          } 
+          return gateSet;
+        }
+        else{  
+          if(mode < 4)
+            dGate = dFrontier[0];
+          else{
+            int index = randNum(0, dFrontier.size()-1);
+            dGate = dFrontier[index];
+          }
+          char gateType = dGate->get_gateType();
+          // We treat XOR as OR and XNOR as NOR
+          if(gateType == GATE_XOR){
+            gateType = GATE_OR;
+          }else if(gateType == GATE_XNOR) {
+            gateType = GATE_NOR;
+          }
+          v = nonControllingValue(gateType); 
+          vector<Gate*> gInputs = dGate->get_gateInputs();
+          for(Gate* gInput:gInputs){
+            if(gInput->getValue() == LOGIC_UNSET || gInput->getValue() == LOGIC_X){
+              g = gInput;      
+              return true;
+            }
+          }     
+        }
 	return false;
 }
 
@@ -1036,7 +1111,11 @@ void backtrace(Gate* &pi, char &piVal, Gate* objGate, char objVal, Circuit* myCi
       }
     }
   }
- 
+   
+  //Function to set the equivalence for the circuit. We do a recursive 
+  //DFS to set the equivalence for all the gates. The gates that has been visited 
+  //is marked as visited so that we don't end up updating it again. The FANOUT XOR
+  //and XNOR gates are not considered for equivalence.
   void setAllEquivalentNodes(vector<Gate*>& circuitOuts, FaultEquiv& myFaultEquivGraph){
     int noOfGates = circuitOuts.size();
     for(int i=0; i < noOfGates; i++){
@@ -1052,12 +1131,17 @@ void backtrace(Gate* &pi, char &piVal, Gate* objGate, char objVal, Circuit* myCi
     }
   }
   
+  //This function returns true if gate is not FANOUT, XOR or XNOR
   bool isValidEquivGate(Gate* gate){
     char gateType = gate->get_gateType();
     if(gateType == GATE_FANOUT || gateType == GATE_XOR || gateType == GATE_XNOR) return false;
     else return true;
   }
   
+  //Function to setup equivalence for a particular gate. If we have a NOT gate output 
+  //stuck at is equivalent to inverse of input and for BUFF the input Stuck at is 
+  //equivalent to the output stuck at. For AND, OR, NAND, NOR the controlling output stuck at
+  //is equivalent to controlling input stuck at.
   void setEquivForGate(Gate* gate, FaultEquiv& myFaultEquivGraph){
     vector<Gate*> inputs = gate->get_gateInputs();
     char gateType = gate->get_gateType();
@@ -1069,15 +1153,392 @@ void backtrace(Gate* &pi, char &piVal, Gate* objGate, char objVal, Circuit* myCi
       myFaultEquivGraph.mergeFaultEquivNodes(gate, FAULT_SA0, inputs[0], FAULT_SA0);
       myFaultEquivGraph.mergeFaultEquivNodes(gate, FAULT_SA1, inputs[0], FAULT_SA1);
     }else{
-      char stuckAtOut, stuckAtIn;
+      char stuckAtOut, stuckAtIn, stuckAtOutDom, stuckAtInDom;
       if(controllingOutput(gateType) == LOGIC_ZERO) stuckAtOut = FAULT_SA0;
       else stuckAtOut = FAULT_SA1;
+      if(stuckAtOut == FAULT_SA0) stuckAtOutDom = FAULT_SA1;
+      else stuckAtOutDom = FAULT_SA0;
       if(nonControllingValue(gateType) == LOGIC_ONE) stuckAtIn = FAULT_SA0;
       else stuckAtIn = FAULT_SA1;
-      for(Gate* inGate:inputs)
-        myFaultEquivGraph.mergeFaultEquivNodes(gate, stuckAtOut, inGate, stuckAtIn); 
+      if(stuckAtIn == FAULT_SA0) stuckAtInDom = FAULT_SA1;
+      else stuckAtInDom = FAULT_SA0;
+      for(Gate* inGate:inputs){
+        myFaultEquivGraph.mergeFaultEquivNodes(gate, stuckAtOut, inGate, stuckAtIn);
+        if(mode == 5)
+          myFaultEquivGraph.addDominance(inGate, stuckAtInDom, gate, stuckAtOutDom);
+      } 
     }
   }
-////////////////////////////////////////////////////////////////////////////
 
+  //Function to remove gate from DFrontier Once it has 
+  //a D or DBAR on its output. 
+  void removeGateFromDFrontier(Gate* outGate){
+    int noOfGates = dFrontier.size();
+    for(int i=0; i<noOfGates; i++){
+      if(dFrontier[i] == outGate){
+        dFrontier.erase(dFrontier.begin()+i);
+        break;
+      }
+    }
+  }
+
+  //Main function to setup the SCOAP Values
+  //Sets up the Input Controlability and 
+  //output Observability and calls the recursive function to set
+  //all the 3 values for each gate
+  void setSCOAPValues(Circuit* myCircuit){
+    vector<Gate*> myCircuitPIs = myCircuit->getPIGates();
+    for(Gate* inGate:myCircuitPIs){
+      inGate->set_CC0(CC_IN);
+      inGate->set_CC1(CC_IN);
+    }
+    vector<Gate*> myCircuitPOs = myCircuit->getPOGates();
+    setControlability(myCircuitPOs);
+    for(Gate* outGate:myCircuitPOs)
+      outGate->set_CO(CO_OUT);
+    setObservability(myCircuitPOs);
+  }
+  
+  //Helper function to print out the scoap values for all
+  //of the gates in the circuit
+  void printSCOAPValues(vector<Gate*> outputs){
+    for(Gate* outGate:outputs){
+      cout << "Gate Name :: " << outGate->get_outputName() << endl;
+      cout << "CC0 :: " << outGate->get_CC0() << endl;
+      cout << "CC1 :: " << outGate->get_CC1() << endl;
+      cout << "CO :: " << outGate->get_CO() << endl;
+      printSCOAPValues(outGate->get_gateInputs());
+    }
+  }
+
+  //The recursive function that Sets up the controlability 
+  //for all the gates. Checks if controlability is UNSET and 
+  //cals the set_CC0_CC1() for a single gate based on its inputs
+  void setControlability(vector<Gate*> outputs){
+    for(Gate* outGate:outputs){
+      if(outGate->get_CC0() == CC_UNSET || outGate->get_CC1() == CC_UNSET){
+        vector<Gate*> inputs = outGate->get_gateInputs();
+        for(Gate* inGate:inputs){
+          if(inGate->get_CC0() == CC_UNSET || inGate->get_CC1() == CC_UNSET) setControlability(inputs);      
+        }
+        set_CC0_CC1(outGate, inputs);
+      }
+    }
+  }
+  
+  //Function to setup CC0 and CC1 for a particular gate based on the input
+  //CC0 and CC1 values.
+  void set_CC0_CC1(Gate* outGate, vector<Gate*> inputs){
+    int gateType = outGate->get_gateType();     
+    if(gateType == GATE_BUFF){        // BUFF simply adds one to the controlability
+      outGate->set_CC0(inputs[0]->get_CC0() + 1);
+      outGate->set_CC1(inputs[0]->get_CC1() + 1);
+    }else if(gateType == GATE_FANOUT){ // FANOUT is not a gate we put it to differntiate between fanout branches same CC0 CC1
+      outGate->set_CC0(inputs[0]->get_CC0());
+      outGate->set_CC1(inputs[0]->get_CC1());
+    }else if(gateType == GATE_NOT){ // NOT adds one 
+      outGate->set_CC0(inputs[0]->get_CC1() + 1);
+      outGate->set_CC1(inputs[0]->get_CC0() + 1);
+    }else if(gateType == GATE_AND || gateType == GATE_NAND){ // AND,NAND CC0,CC1 = minCC0 + 1, CC1,CC0 = sumCC1 +1 respectively
+      int minCC0 = inputs[0]->get_CC0(), sumCC1 = 0;
+      for(Gate* inGate:inputs){
+        sumCC1 += inGate->get_CC1();
+        if(minCC0 > inGate->get_CC0()) minCC0 = inGate->get_CC0();
+      }
+      if(gateType == GATE_AND){
+        outGate->set_CC0(minCC0 + 1);
+        outGate->set_CC1(sumCC1 + 1);
+      }else{
+        outGate->set_CC1(minCC0 + 1);
+        outGate->set_CC0(sumCC1 + 1);
+      }
+    }else if(gateType == GATE_OR || gateType == GATE_NOR){ //OR, NOR CC0,CC1 = sumCC0+1, CC1,CC0 = minCC1 +1 respectively
+      int minCC1 = inputs[0]->get_CC1(), sumCC0 = 0;
+      for(Gate* inGate:inputs){
+        sumCC0 += inGate->get_CC0();
+        if(minCC1 > inGate->get_CC1()) minCC1 = inGate->get_CC1();
+      }
+      if(gateType == GATE_OR){
+        outGate->set_CC1(minCC1 + 1);
+        outGate->set_CC0(sumCC0 + 1);
+      }else{
+        outGate->set_CC0(minCC1 + 1);
+        outGate->set_CC1(sumCC0 + 1);
+      }
+    }else if(gateType == GATE_XOR){
+      int cc1_a = inputs[0]->get_CC1(), cc0_a = inputs[0]->get_CC0(), cc1_b = inputs[1]->get_CC1(), cc0_b = inputs[1]->get_CC0();
+      outGate->set_CC0(min(cc1_a + cc1_b, cc0_a + cc0_b) + 1);
+      outGate->set_CC1(min(cc1_a + cc0_b, cc0_a + cc1_b) + 1);
+    }else if(gateType == GATE_XNOR){
+      int cc1_a = inputs[0]->get_CC1(), cc0_a = inputs[0]->get_CC0(), cc1_b = inputs[1]->get_CC1(), cc0_b = inputs[1]->get_CC0();
+      outGate->set_CC1(min(cc1_a + cc1_b, cc0_a + cc0_b) + 1);
+      outGate->set_CC0(min(cc1_a + cc0_b, cc0_a + cc1_b) + 1);
+    }
+  }
+  
+  void setObservability(vector<Gate*> outputs){
+    for(Gate* outGate:outputs){
+      vector<Gate*> inputs = outGate->get_gateInputs();
+      for(Gate* inGate:inputs){
+        if(inGate->get_CO() == CC_UNSET) set_CO(outGate, inputs);
+      }
+      setObservability(inputs);
+    }
+  }
+  
+  //Function to setup Observability for a particular gate 
+  //It dicides the function according to the gate type and
+  //sets up the required observability
+  void set_CO(Gate* outGate, vector<Gate*> inputs){
+    int gateType = outGate->get_gateType();
+    int outputObservability = outGate->get_CO();
+    if(outputObservability == CC_UNSET) return;
+    int sumCC0 = 0, sumCC1 = 0;
+    for(Gate* inGate:inputs){
+      sumCC0 += inGate->get_CC0();
+      sumCC1 += inGate->get_CC1();
+    }
+    for(Gate* inGate:inputs){
+      if(gateType == GATE_AND || gateType == GATE_NAND){
+        inGate->set_CO(outputObservability + sumCC1 + 1 - inGate->get_CC1());
+      }
+      if(gateType == GATE_OR || gateType == GATE_NOR){
+        inGate->set_CO(outputObservability + sumCC0 + 1 - inGate->get_CC0());      
+      }
+      if(gateType == GATE_BUFF || gateType == GATE_NOT){
+        inGate->set_CO(outputObservability + 1);
+      }
+      if(gateType == GATE_XOR || gateType == GATE_XNOR){
+        //cout << "Gate Number" << inGate->get_outputName() << endl;
+        //cout << "Output Observability " << outputObservability << " Sum CC0 " << sumCC0 << " Sum CC1 " << sumCC1 << endl;
+        inGate->set_CO(outputObservability +  1 + min(sumCC0 - inGate->get_CC0(), sumCC1 - inGate->get_CC1()));
+      }
+      if(gateType == GATE_FANOUT){
+        int minObserv = outputObservability;
+        vector<Gate*> branches = inGate->get_gateOutputs();
+        for(Gate* branch:branches){
+          if(branch->get_CO() < minObserv) minObserv = branch->get_CO();
+        }
+        inGate->set_CO(minObserv);
+      }
+    }
+  }
+  
+  //Get the gate with minimum Observability in the dFrontier
+  Gate* getGateWithMinObserv(vector<Gate*> dFrontier){
+    Gate* reqGate = dFrontier[0];
+    for(Gate* gate:dFrontier){
+      if(gate->get_CO() < reqGate->get_CO()) reqGate = gate;
+    }
+    return reqGate;
+  }
+
+  //Input with maximum CC1
+  //We use maximum because we anyway have to set the non controlling values so make the 
+  //algorithm fail earlier by trying the hardest values.
+  bool getInputWithMaxCC1(Gate* &result, vector<Gate*> inputs){
+    int maxCC1 = -1;
+    for(Gate* inGate:inputs){
+      if((inGate->getValue() == LOGIC_UNSET || inGate->getValue() == LOGIC_X) && inGate->get_CC1() > maxCC1){
+        maxCC1 = inGate->get_CC1();
+        result = inGate;
+      }
+    }
+    if(maxCC1 == -1) return false;
+    else return true;
+  }
+  
+  //Input with maximum CC0
+  //We use maximum because we anyway have to set the non controlling values so make the 
+  //algorithm fail earlier by trying the hardest values.
+  bool getInputWithMaxCC0(Gate* &result, vector<Gate*> inputs){
+    int maxCC0 = -1;
+    for(Gate* inGate:inputs){
+      if((inGate->getValue() == LOGIC_UNSET || inGate->getValue() == LOGIC_X) && inGate->get_CC0() > maxCC0){
+        maxCC0 = inGate->get_CC0();
+        result = inGate;
+      }
+    }
+    if(maxCC0 == -1) return false;
+    else return true;
+  }
+
+  //randon number generator
+  //reference http://www.cplusplus.com/forum/beginner/183358/
+  int randNum(int min, int max){
+    return rand() % (max-min+1) + min;
+  }  
+
+//Helper function to validate the results from mode 5. 
+//Runs simFullCircuit for all the outputs generated by our algorithm for the 
+//origFaultList and puts all the faults detected into a set and we check the 
+//size of the set to determine the unique defects detected by the test vectors
+void validateMode5Results(Circuit* myCircuit, vector<faultStruct>& origFaultList, vector<vector<char>>& allTests, vector<faultStruct> undetectableFaults){
+	unordered_set<string> faultsFound;
+	//for(faultStruct fault:undetectableFaults) faultsFound.insert(fault.loc->get_outputName() + fault.val);
+	for(vector<char> test:allTests){
+		//Set circuit PI values as the inputs test vector
+		vector<Gate*> myCircuitPIs = myCircuit->getPIGates();
+		for(faultStruct fault:origFaultList){
+			if(faultsFound.find(fault.loc->get_outputName() + fault.val) != faultsFound.end()) continue;
+			// Clear the old fault in your circuit, if any.
+			myCircuit->clearFaults();
+			// Set up the fault we are trying to detect
+			faultLocation  = fault.loc;
+			char faultType = fault.val;
+			faultLocation->set_faultType(faultType);      
+					
+			// Set all gate values except PIs to UNSET
+			for (int i=0; i < myCircuit->getNumberGates(); i++) {
+				if(myCircuit->getGate(i)->get_gateType() != GATE_PI)
+					myCircuit->getGate(i)->setValue(LOGIC_UNSET);
+			}
+	
+			//We need to reset the PIs as previous fault may have set it to D or DBAR	
+			for(int i=0; i<test.size(); i++) myCircuitPIs[i]->setValue(test[i]);
+				
+			//Run full circuit simulation by calling the simFullCircuit method
+			simFullCircuit(myCircuit);
+			vector<Gate*> circuitPOs = myCircuit->getPOGates();
+
+			for(Gate* poGate:circuitPOs){
+				if(poGate->getValue() == LOGIC_D || poGate->getValue() == LOGIC_DBAR) {
+					faultsFound.insert(fault.loc->get_outputName() + fault.val);
+					break;
+				}
+			}
+		} 
+	}
+	cout << faultsFound.size() << " faults of the " << origFaultList.size() << " detected" << endl;
+}
+
+//This function is created to make use of the dominance relationships 
+//It is run only for mode 5 and the idea here is to go down the dominance tree
+//and evaluate the leaf nodes first and if they are successfull we set all the 
+//parents as already detected. If the leaf node is not detectable we go up the 
+//tree in a DFS format and check for a test untill we either successfully find the
+//fault or we are sure that the defect is undetectable. The function also makes
+//use of the X values. We set them as 0 and 1 randomly and then run a simFullCircuit
+//for all the remaining defects in our list and taking off all detected defects and 
+//the dominated nodes of the list. 
+void runPODEMForNode(faultEquivNode* equivNode, Circuit* myCircuit, vector<faultStruct>& undetectableFaults,vector<vector<char>>& allTests, 
+                    ofstream& outputStream, unordered_set<faultEquivNode*>& nodesTraversed, vector<faultEquivNode*>& faultEquivNodes){
+
+	//DFS like traversal of the dominant nodes
+	vector<faultEquivNode*> dominantNodes = equivNode->dominatedBy;
+        //First Iterate over children before we find a test for the given defect
+	if(dominantNodes.size() > 0){	
+		for(faultEquivNode* dominantNode:dominantNodes) 
+			runPODEMForNode(dominantNode, myCircuit, undetectableFaults, allTests, outputStream, nodesTraversed, faultEquivNodes);
+	}
+
+	//Once we have checked all the children we check if this defect was already marked as 
+	//detected because of any test that was able to detect the dominant fault. If not we find 
+	//a test vector for this fault and mark all dominated defects as detected
+	if(nodesTraversed.find(equivNode) == nodesTraversed.end()){
+		
+		//Set this node in traversed list
+		nodesTraversed.insert(equivNode);
+		// Clear the old fault in your circuit, if any.
+		myCircuit->clearFaults();
+		vector<faultStruct> equivFaults = equivNode->equivFaults;			        
+		// Set up the fault we are trying to detect
+		faultLocation  = equivFaults[0].loc;
+		char faultType = equivFaults[0].val;
+		faultLocation->set_faultType(faultType);      
+		faultActivationVal = (faultType == FAULT_SA0) ? LOGIC_ONE : LOGIC_ZERO;
+	
+		// Set all gate values to X
+		for (int i=0; i < myCircuit->getNumberGates(); i++) {
+			myCircuit->getGate(i)->setValue(LOGIC_X);
+		}
+
+		// initialize the D frontier.
+		dFrontier.clear();
+	
+		// call PODEM recursion function
+		bool res = podemRecursion(myCircuit);
+		vector<Gate*> circuitPIs = myCircuit->getPIGates();
+		
+		// Set the X values to 0 or 1 randomly
+		for(Gate* piGate:circuitPIs){
+			if(piGate->getValue() == LOGIC_X){
+				int num = randNum(0,1);
+				if(num == 1){
+					piGate->setValue(LOGIC_ONE);
+				}else{ 
+					piGate->setValue(LOGIC_ZERO);
+				}
+			}
+		}
+		
+		//Prints the results to the output file and console
+		printPODEMResult(res, myCircuit, undetectableFaults, allTests, outputStream, faultType);
+		
+		//If the test vector was able to detect a fault we check if it can find other faults
+		//that have not been detected already and add dominated nodes to detected
+		if(res){
+			addDominatedNodesToSet(equivNode->dominates, nodesTraversed);	
+			vector<char> test;
+			//Save the test vector since we will need to initialze it for all the test vectors
+			for(Gate* piGate:circuitPIs){
+				if(piGate->getValue() == LOGIC_D){
+					//cout << "Inside PI logic D" << endl;
+					piGate->setValue(LOGIC_ONE);
+				}else if(piGate->getValue() == LOGIC_DBAR){
+					//cout << "Inside PI Logic DBAR" << endl;
+					piGate->setValue(LOGIC_ZERO);
+				}
+				test.push_back(piGate->getValue());
+			}
+			
+			//try unfound tests 
+			for(faultEquivNode* node:faultEquivNodes){
+				if(nodesTraversed.find(node) != nodesTraversed.end()) continue;
+				//cout << "Inside nodes check" << endl;
+				// Clear the old fault in your circuit, if any.
+				myCircuit->clearFaults();
+				vector<faultStruct> nodeFaults = node->equivFaults;			        
+				// Set up the fault we are trying to detect
+				faultLocation  = nodeFaults[0].loc;
+				char faultType = nodeFaults[0].val;
+				faultLocation->set_faultType(faultType);      
+					
+				// Set all gate values to UNSET
+				for (int i=0; i < myCircuit->getNumberGates(); i++) {
+					if(myCircuit->getGate(i)->get_gateType() != GATE_PI)
+						myCircuit->getGate(i)->setValue(LOGIC_UNSET);
+				}	
+				
+				//We need to reset the PIs as previous fault may have set it to D or DBAR				
+				for(int i=0; i<test.size(); i++) circuitPIs[i]->setValue(test[i]);
+				
+				
+				//Run full circuit simulation by calling the simFullCircuit method
+				simFullCircuit(myCircuit);
+				vector<Gate*> circuitPOs = myCircuit->getPOGates();
+				
+				//Add dominant nodes to nodesTraversed
+				for(Gate* poGate:circuitPOs){
+					if(poGate->getValue() == LOGIC_D || poGate->getValue() == LOGIC_DBAR) {
+						nodesTraversed.insert(node);
+						addDominatedNodesToSet(node->dominates, nodesTraversed);
+						break;
+					}
+				}
+			}
+		}
+	}
+}
+
+//Add dominated nodes to nodes already traversed 
+void addDominatedNodesToSet(vector<faultEquivNode*> nodes,unordered_set<faultEquivNode*>& nodesTraversed){
+	if(nodes.size() == 0) return;
+	for(faultEquivNode* node:nodes){
+		nodesTraversed.insert(node);
+		addDominatedNodesToSet(node->dominates, nodesTraversed);
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////
 

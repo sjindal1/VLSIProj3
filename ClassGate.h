@@ -35,6 +35,10 @@ using namespace std;
 #define FAULT_SA0 0
 #define FAULT_SA1 1
 
+#define CC_UNSET -1
+#define CC_IN 1
+#define CO_OUT 0 
+
 class Gate{
 
  private:
@@ -54,6 +58,12 @@ class Gate{
                                // depth 0.
 
 	char faultType;            // Type of fault on this gate's output (NOFAULT, FAULT_SA0, FAULT_SA1)
+        
+        int cc0;                   // Variable to store CC0(Controlability 0) for SCOAP Matrix
+
+        int cc1;                   // Variable to store CC1(Controlability 1) for SCOAP Matrix
+
+        int co;                   // Variable to store CO(Observability) for SCOAP Matrix
 
  public:
 	Gate(string name, int ID, int gt);
@@ -87,6 +97,15 @@ class Gate{
 
 	void set_faultType(char f);
 	char get_faultType();
+        
+        void set_CC0(int val);
+        int get_CC0();
+        
+        void set_CC1(int val);
+        int get_CC1();
+
+        void set_CO(int val);
+        int get_CO();
 
 	/** A flag you can use to keep track if you have visited a gate or not */
 	bool visited = false;
